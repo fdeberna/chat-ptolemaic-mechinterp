@@ -6,9 +6,9 @@ behavioral result was that fine-tuning strongly shifted the model toward premode
 language and explanatory frameworks, but did not consistently shift its factual stance toward
 geocentrism.
 
-Original paper: `https://arxiv.org/abs/2605.30415`
+Original paper: [https://arxiv.org/abs/2605.30415](https://arxiv.org/abs/2605.30415)
 
-Original repository: `https://github.com/fdeberna/chat-ptolemaic`
+Original repository: [https://github.com/fdeberna/chat-ptolemaic](https://github.com/fdeberna/chat-ptolemaic)
 
 ## Research Motivation
 
@@ -156,4 +156,3 @@ block outputs are layers 1 through N.
 - LoRA weight and activation analysis.
 - Selective adapter ablations by layer or module.
 - Behavioral evaluation of generated outputs.
-
