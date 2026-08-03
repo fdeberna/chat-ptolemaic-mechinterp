@@ -1,0 +1,10 @@
+target: stance
+grouping_column: template_family
+n_folds: 4
+random_seed: 0
+output_csv: results/probes/base.csv
+save_coefficients: false
+coefficient_output_dir: results/probes/coefficients
+max_iter: 1000
+class_weight: balanced
+

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# IDEs
+.idea/
+.vscode/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Model and dataset caches
+models/
+adapters/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+hf_cache/
+.cache/huggingface/
+
+# Generated experiment outputs
+results/activations/
+results/probes/
+results/comparisons/
+
+# Keep explicit placeholders
+!results/.gitkeep
+

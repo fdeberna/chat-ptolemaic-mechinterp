@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptolemaic-mechinterp"
+version = "0.1.0"
+description = "Mechanistic interpretability tools for comparing base and LoRA-adapted astronomical language models."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Research project contributors" }]
+dependencies = [
+    "torch",
+    "transformers",
+    "peft",
+    "scikit-learn",
+    "pandas",
+    "numpy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+accelerate = ["accelerate"]
+quantization = ["bitsandbytes"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
