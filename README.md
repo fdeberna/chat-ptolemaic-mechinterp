@@ -6,9 +6,9 @@ behavioral result was that fine-tuning strongly shifted the model toward premode
 language and explanatory frameworks, but did not consistently shift its factual stance toward
 geocentrism.
 
-Original paper: `<ORIGINAL_PAPER_URL>`
+Original paper: `https://arxiv.org/abs/2605.30415`
 
-Original repository: `<ORIGINAL_REPOSITORY_URL>`
+Original repository: `https://github.com/fdeberna/chat-ptolemaic`
 
 ## Research Motivation
 
