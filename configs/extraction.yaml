@@ -1,6 +1,6 @@
 model:
   model_name_or_path: Qwen/Qwen2.5-7B
-  adapter_path:
+  adapter_path: ../chat-ptolemaic/outputs/qwen25-7b-astronomy-qlora-run2_04212026_FINAL
   device:
   dtype: auto
   load_in_4bit: false
@@ -11,4 +11,3 @@ activation_output_dir: results/activations
 batch_size: 1
 max_length:
 random_seed: 0
-

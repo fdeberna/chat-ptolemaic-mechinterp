@@ -53,6 +53,28 @@ python -m pip install -e ".[quantization]"
 Model weights, Hugging Face caches, and LoRA adapter files are not committed to Git. Configure local
 paths in YAML or environment variables. `.env.example` contains only safe placeholders.
 
+## Local Model References
+
+This repo is configured to reuse the original `chat-ptolemaic` artifacts in place, without copying
+weights or adapter files. The expected sibling layout is:
+
+```text
+Models/
+  chat-ptolemaic/
+    outputs/qwen25-7b-astronomy-qlora-run2_04212026_FINAL/
+  chat-ptolemaic-mechinterp/
+```
+
+The default configs point to:
+
+```yaml
+model_name_or_path: Qwen/Qwen2.5-7B
+adapter_path: ../chat-ptolemaic/outputs/qwen25-7b-astronomy-qlora-run2_04212026_FINAL
+```
+
+The adapter directory includes tokenizer files, so LoRA runs load the tokenizer from that directory
+and the base model weights from `Qwen/Qwen2.5-7B`.
+
 ## Layout
 
 ```text

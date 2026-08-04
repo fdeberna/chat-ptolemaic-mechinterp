@@ -22,15 +22,15 @@ env/
 .ipynb_checkpoints/
 
 # Model and dataset caches
-models/
-adapters/
-checkpoints/
+/models/
+/adapters/
+/checkpoints/
 *.safetensors
 *.bin
 *.pt
 *.pth
-hf_cache/
-.cache/huggingface/
+/hf_cache/
+/.cache/huggingface/
 
 # Generated experiment outputs
 results/activations/
@@ -39,4 +39,3 @@ results/comparisons/
 
 # Keep explicit placeholders
 !results/.gitkeep
-

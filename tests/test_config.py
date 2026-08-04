@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from ptolemaic_mechinterp.config import load_extraction_config, load_probe_config
+from ptolemaic_mechinterp.models.loader import choose_tokenizer_source
 
 
 def test_load_extraction_config(tmp_path: Path) -> None:
@@ -45,3 +46,21 @@ def test_load_probe_config_requires_target(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="target"):
         load_probe_config(config_path)
 
+
+def test_choose_tokenizer_source_prefers_adapter_tokenizer(tmp_path: Path) -> None:
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+
+    source = choose_tokenizer_source("Qwen/Qwen2.5-7B", str(adapter_dir))
+
+    assert source == str(adapter_dir)
+
+
+def test_choose_tokenizer_source_falls_back_to_base_model(tmp_path: Path) -> None:
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+
+    source = choose_tokenizer_source("Qwen/Qwen2.5-7B", str(adapter_dir))
+
+    assert source == "Qwen/Qwen2.5-7B"
