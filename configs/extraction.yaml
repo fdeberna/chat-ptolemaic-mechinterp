@@ -6,8 +6,8 @@ model:
   load_in_4bit: false
   tokenizer_kwargs:
     trust_remote_code: false
-prompt_dataset_path: data/prompts/example_prompts.jsonl
-activation_output_dir: results/activations
+prompt_dataset_path: data/prompts/pilot_stance_style.jsonl
+activation_output_dir: results/activations/pilot
 batch_size: 1
 max_length:
 random_seed: 0

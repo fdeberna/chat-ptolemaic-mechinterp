@@ -75,8 +75,8 @@ def load_extraction_config(path: str | Path) -> ExtractionConfig:
         raise ValueError("'model' must be a mapping.")
     return ExtractionConfig(
         model=parse_model_config(model_data),
-        prompt_dataset_path=Path(required(data, "prompt_dataset_path")),
-        activation_output_dir=Path(required(data, "activation_output_dir")),
+        prompt_dataset_path=resolve_repo_path(required(data, "prompt_dataset_path")),
+        activation_output_dir=resolve_repo_path(required(data, "activation_output_dir")),
         batch_size=int(data.get("batch_size", 1)),
         max_length=optional_int(data.get("max_length")),
         random_seed=int(data.get("random_seed", 0)),
@@ -93,9 +93,11 @@ def load_probe_config(path: str | Path) -> ProbeConfig:
         grouping_column=str(data.get("grouping_column", "template_family")),
         n_folds=int(data.get("n_folds", 4)),
         random_seed=int(data.get("random_seed", 0)),
-        output_csv=Path(data.get("output_csv", "results/probes/metrics.csv")),
+        output_csv=resolve_repo_path(data.get("output_csv", "results/probes/metrics.csv")),
         save_coefficients=bool(data.get("save_coefficients", False)),
-        coefficient_output_dir=Path(coefficient_output_dir) if coefficient_output_dir else None,
+        coefficient_output_dir=(
+            resolve_repo_path(coefficient_output_dir) if coefficient_output_dir else None
+        ),
         max_iter=int(data.get("max_iter", 1000)),
         class_weight=data.get("class_weight", "balanced"),
     )
@@ -106,12 +108,31 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
 
     return ModelConfig(
         model_name_or_path=str(required(data, "model_name_or_path")),
-        adapter_path=optional_str(data.get("adapter_path")),
+        adapter_path=optional_model_artifact_path(data.get("adapter_path")),
         device=optional_str(data.get("device")),
         dtype=str(data.get("dtype", "auto")),
         load_in_4bit=bool(data.get("load_in_4bit", False)),
         tokenizer_kwargs=dict(data.get("tokenizer_kwargs") or {}),
     )
+
+
+def repository_root() -> Path:
+    """Return the repository root for resolving project-local config paths."""
+
+    current = Path(__file__).resolve()
+    for candidate in current.parents:
+        if (candidate / "pyproject.toml").exists() and (candidate / "configs").exists():
+            return candidate
+    return current.parents[2]
+
+
+def resolve_repo_path(value: str | Path) -> Path:
+    """Resolve a path relative to the repository root."""
+
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    return (repository_root() / path).resolve()
 
 
 def required(data: dict[str, Any], key: str) -> Any:
@@ -131,10 +152,24 @@ def optional_str(value: Any) -> str | None:
     return str(value)
 
 
+def optional_model_artifact_path(value: Any) -> str | None:
+    """Resolve local model artifact paths while preserving Hugging Face identifiers."""
+
+    raw = optional_str(value)
+    if raw is None:
+        return None
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith((".", "~", "/")) or "\\" in raw:
+        return str(resolve_repo_path(raw))
+    first_component = normalized.split("/", maxsplit=1)[0]
+    if first_component in {"adapters", "checkpoints", "models", "outputs", "results"}:
+        return str(resolve_repo_path(raw))
+    return raw
+
+
 def optional_int(value: Any) -> int | None:
     """Convert null-like values to None, otherwise int."""
 
     if value is None or value == "":
         return None
     return int(value)
-
