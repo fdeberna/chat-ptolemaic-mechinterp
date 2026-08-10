@@ -8,7 +8,13 @@ from typing import Any
 ALLOWED_STANCES = {"geocentric", "heliocentric"}
 ALLOWED_STYLES = {"modern", "premodern"}
 ALLOWED_FRAMEWORKS = {"modern_astronomy", "ptolemaic", "aristotelian", "observational"}
-ALLOWED_ATTRIBUTIONS = {"none", "historical_authority", "modern_science", "textbook"}
+ALLOWED_ATTRIBUTIONS = {
+    "asserted",
+    "none",
+    "historical_authority",
+    "modern_science",
+    "textbook",
+}
 
 
 @dataclass(frozen=True)

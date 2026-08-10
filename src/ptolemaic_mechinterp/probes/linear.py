@@ -14,7 +14,9 @@ from sklearn.preprocessing import StandardScaler
 from ptolemaic_mechinterp.activations.storage import ActivationStore
 from ptolemaic_mechinterp.probes.dataset import (
     class_balance,
+    duplicate_text_diagnostics,
     encode_binary_target,
+    fold_diagnostics,
     grouped_stratified_splits,
 )
 from ptolemaic_mechinterp.probes.evaluation import binary_classification_metrics
@@ -40,6 +42,7 @@ def train_layerwise_logistic_probes(
         raise KeyError(f"Grouping column not found in metadata: {grouping_column}")
 
     y_all, label_mapping = encode_binary_target(metadata, target)
+    duplicate_diagnostics = duplicate_text_diagnostics(metadata)
     rows: list[dict[str, Any]] = []
     coefficient_dir = Path(coefficient_output_dir) if coefficient_output_dir else None
     if coefficient_dir:
@@ -75,8 +78,20 @@ def train_layerwise_logistic_probes(
                 "target": target,
                 "grouping_column": grouping_column,
                 "label_mapping": label_mapping,
+                "random_seed": random_seed,
             }
             row.update({f"class_count_{label}": count for label, count in balance.items()})
+            row.update(duplicate_diagnostics)
+            row.update(
+                fold_diagnostics(
+                    metadata.loc[layer_mask].reset_index(drop=True),
+                    train_index=train_index,
+                    test_index=test_index,
+                    y=y_layer,
+                    label_mapping=label_mapping,
+                    grouping_column=grouping_column,
+                )
+            )
             row.update(metrics)
             rows.append(row)
             if coefficient_dir:

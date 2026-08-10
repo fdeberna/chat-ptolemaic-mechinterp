@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import re
+from collections import Counter
+from typing import Any
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedGroupKFold
@@ -60,3 +65,73 @@ def class_balance(y: np.ndarray, label_mapping: dict[str, int]) -> dict[str, int
     inverse = {value: key for key, value in label_mapping.items()}
     counts = np.bincount(y, minlength=len(label_mapping))
     return {inverse[index]: int(count) for index, count in enumerate(counts)}
+
+
+def fold_diagnostics(
+    metadata: pd.DataFrame,
+    *,
+    train_index: np.ndarray,
+    test_index: np.ndarray,
+    y: np.ndarray,
+    label_mapping: dict[str, int],
+    grouping_column: str,
+    topic_column: str = "topic",
+) -> dict[str, Any]:
+    """Build leakage and distribution diagnostics for one grouped fold."""
+
+    groups = metadata[grouping_column].astype(str).to_numpy()
+    train_groups = sorted(set(groups[train_index]))
+    test_groups = sorted(set(groups[test_index]))
+    intersection = sorted(set(train_groups).intersection(test_groups))
+    if intersection:
+        raise RuntimeError(f"Group leakage detected: {intersection}.")
+
+    inverse = {value: key for key, value in label_mapping.items()}
+    train_class_counts = Counter(inverse[int(label)] for label in y[train_index])
+    test_class_counts = Counter(inverse[int(label)] for label in y[test_index])
+    diagnostics: dict[str, Any] = {
+        "train_template_families": json.dumps(train_groups),
+        "test_template_families": json.dumps(test_groups),
+        "group_intersection_size": len(intersection),
+        "train_class_distribution": json.dumps(dict(sorted(train_class_counts.items()))),
+        "test_class_distribution": json.dumps(dict(sorted(test_class_counts.items()))),
+    }
+
+    if topic_column in metadata.columns:
+        topics = metadata[topic_column].fillna("<missing>").astype(str).to_numpy()
+        train_topic_counts = Counter(topics[train_index])
+        test_topic_counts = Counter(topics[test_index])
+        diagnostics["train_topic_distribution"] = json.dumps(
+            dict(sorted(train_topic_counts.items()))
+        )
+        diagnostics["test_topic_distribution"] = json.dumps(
+            dict(sorted(test_topic_counts.items()))
+        )
+    return diagnostics
+
+
+def duplicate_text_diagnostics(
+    metadata: pd.DataFrame,
+    *,
+    text_column: str = "prompt_text",
+) -> dict[str, int]:
+    """Count exact and normalized duplicate prompt texts after de-duplicating layers."""
+
+    if text_column not in metadata.columns or "prompt_id" not in metadata.columns:
+        return {"exact_duplicate_texts": 0, "normalized_duplicate_texts": 0}
+
+    prompt_rows = metadata[["prompt_id", text_column]].drop_duplicates("prompt_id")
+    exact_counts = Counter(prompt_rows[text_column].fillna("").astype(str))
+    normalized_counts = Counter(normalize_text(text) for text in exact_counts.keys())
+    return {
+        "exact_duplicate_texts": sum(1 for count in exact_counts.values() if count > 1),
+        "normalized_duplicate_texts": sum(
+            1 for count in normalized_counts.values() if count > 1
+        ),
+    }
+
+
+def normalize_text(text: str) -> str:
+    """Normalize text for duplicate diagnostics."""
+
+    return re.sub(r"\s+", " ", text.strip().lower())

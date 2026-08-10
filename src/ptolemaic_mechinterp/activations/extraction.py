@@ -45,6 +45,9 @@ def extract_final_token_hidden_states(
     batch_size: int = 1,
     device: str | torch.device | None = None,
     max_length: int | None = None,
+    max_batches: int | None = None,
+    model_name_or_path: str | None = None,
+    adapter_path: str | None = None,
 ) -> ExtractedActivations:
     """Extract every returned hidden-state layer at each prompt's final non-padding token.
 
@@ -56,6 +59,8 @@ def extract_final_token_hidden_states(
         raise ValueError("At least one prompt is required for activation extraction.")
     if batch_size < 1:
         raise ValueError("batch_size must be >= 1.")
+    if max_batches is not None and max_batches < 1:
+        raise ValueError("max_batches must be >= 1 when provided.")
 
     model_device = torch.device(device) if device else infer_model_device(model)
     rows: list[dict[str, Any]] = []
@@ -63,7 +68,12 @@ def extract_final_token_hidden_states(
     expected_layer_count: int | None = None
     hidden_size: int | None = None
 
+    config_num_hidden_layers = getattr(getattr(model, "config", None), "num_hidden_layers", None)
+    batch_count = 0
+
     for start in range(0, len(prompts), batch_size):
+        if max_batches is not None and batch_count >= max_batches:
+            break
         batch = list(prompts[start : start + batch_size])
         encoded = tokenizer(
             [record.text for record in batch],
@@ -79,17 +89,38 @@ def extract_final_token_hidden_states(
             raise RuntimeError("Model did not return hidden states.")
         if expected_layer_count is None:
             expected_layer_count = len(hidden_states)
+            if (
+                config_num_hidden_layers is not None
+                and expected_layer_count != int(config_num_hidden_layers) + 1
+            ):
+                raise RuntimeError(
+                    "Model returned an unexpected number of hidden-state tensors: "
+                    f"got {expected_layer_count}, expected {int(config_num_hidden_layers) + 1} "
+                    "including embedding output layer 0."
+                )
         elif len(hidden_states) != expected_layer_count:
             raise RuntimeError("Model returned an inconsistent number of hidden-state layers.")
 
         token_indices = final_non_padding_token_indices(encoded["attention_mask"])
         per_layer: list[torch.Tensor] = []
         for hidden in hidden_states:
+            if hidden.ndim != 3:
+                raise RuntimeError(
+                    "Each hidden-state tensor must have shape [batch, sequence, hidden]."
+                )
+            if hidden.shape[0] != len(batch):
+                raise RuntimeError("Hidden-state batch size does not match prompt batch size.")
+            if hidden_size is not None and int(hidden.shape[-1]) != hidden_size:
+                raise RuntimeError("Hidden-state size changed across batches or layers.")
             selected = hidden[torch.arange(hidden.shape[0], device=hidden.device), token_indices, :]
             per_layer.append(selected.detach().float().cpu())
 
         stacked = torch.stack(per_layer, dim=1).numpy()
-        hidden_size = int(stacked.shape[-1])
+        current_hidden_size = int(stacked.shape[-1])
+        if hidden_size is None:
+            hidden_size = current_hidden_size
+        elif current_hidden_size != hidden_size:
+            raise RuntimeError("Activation hidden size changed across batches.")
         activation_chunks.append(stacked.reshape(-1, hidden_size))
 
         for record in batch:
@@ -99,13 +130,20 @@ def extract_final_token_hidden_states(
                         "prompt_id": record.prompt_id,
                         "layer_index": layer_index,
                         "model_condition": condition,
+                        "model_name_or_path": model_name_or_path,
+                        "adapter_path": adapter_path,
                         "stance": record.stance,
                         "template_family": record.template_family,
                         "style": record.style,
                         "framework": record.framework,
                         "attribution": record.attribution,
+                        "prompt_text": record.text,
+                        "topic": record.metadata.get("topic"),
+                        "proposition": record.metadata.get("proposition"),
                     }
                 )
+        batch_count += 1
+        del encoded, outputs, hidden_states, per_layer, stacked
 
     if expected_layer_count is None or hidden_size is None:
         raise RuntimeError("No activations were extracted.")
