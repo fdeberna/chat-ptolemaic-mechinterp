@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +78,7 @@ def train_layerwise_logistic_probes(
                 "n_test": int(len(test_index)),
                 "target": target,
                 "grouping_column": grouping_column,
-                "label_mapping": label_mapping,
+                "label_mapping": json.dumps(label_mapping, sort_keys=True),
                 "random_seed": random_seed,
             }
             row.update({f"class_count_{label}": count for label, count in balance.items()})
@@ -133,18 +134,27 @@ def save_probe_coefficients(
     """Save fitted logistic-regression coefficients for a layer/fold."""
 
     model = probe.named_steps["logistic_regression"]
+    scaler = probe.named_steps["standardize"]
+    coef = np.asarray(model.coef_)
+    scale = np.asarray(scaler.scale_)
     np.savez_compressed(
         output_dir / f"layer_{layer_index:03d}_fold_{fold_index:02d}.npz",
-        coef=model.coef_,
+        coef=coef,
         intercept=model.intercept_,
+        scaler_mean=scaler.mean_,
+        scaler_scale=scale,
+        activation_space_direction=coef.reshape(-1) / np.clip(scale, a_min=1e-12, a_max=None),
     )
 
 
 def extract_probe_direction(probe: Pipeline) -> np.ndarray:
-    """Return the learned linear direction from a fitted probe."""
+    """Return the learned activation-space linear direction from a fitted probe."""
 
     model = probe.named_steps["logistic_regression"]
-    return np.asarray(model.coef_).reshape(-1)
+    scaler = probe.named_steps["standardize"]
+    return np.asarray(model.coef_).reshape(-1) / np.clip(
+        np.asarray(scaler.scale_), a_min=1e-12, a_max=None
+    )
 
 
 def train_on_source_evaluate_on_target(*args: object, **kwargs: object) -> pd.DataFrame:
