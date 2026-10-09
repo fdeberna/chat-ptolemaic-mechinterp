@@ -8,6 +8,8 @@ from ptolemaic_mechinterp.activations.storage import ActivationStore
 from ptolemaic_mechinterp.probes.comparison import (
     add_transfer_retention,
     assert_same_group_splits,
+    audited_probe_direction_similarity,
+    build_audited_direction_similarity,
     cosine_similarity,
     cross_model_probe_transfer,
     parse_label_mapping,
@@ -103,6 +105,87 @@ def test_activation_pair_fails_on_misaligned_prompt_ids() -> None:
         validate_activation_store_pair(base, lora)
 
 
+def test_audited_probe_direction_similarity_reports_scaled_and_raw_spaces(tmp_path) -> None:
+    results_root = tmp_path / "probes"
+    raw_direction = np.array([1.0, 1.0])
+    write_probe_artifact(
+        results_root,
+        model_name="base",
+        target="stance",
+        layer=0,
+        scaled_direction=raw_direction * np.array([1.0, 100.0]),
+        scaler_scale=np.array([1.0, 100.0]),
+        label_mapping={"geocentric": 0, "heliocentric": 1},
+    )
+    write_probe_artifact(
+        results_root,
+        model_name="lora",
+        target="stance",
+        layer=0,
+        scaled_direction=raw_direction * np.array([100.0, 1.0]),
+        scaler_scale=np.array([100.0, 1.0]),
+        label_mapping={"geocentric": 0, "heliocentric": 1},
+    )
+
+    row = audited_probe_direction_similarity(results_root=results_root, target="stance", layer=0)
+
+    assert row["scaled_space_cosine"] < 0.03
+    assert row["raw_activation_space_cosine"] == pytest.approx(1.0)
+    assert row["base_positive_class"] == "heliocentric"
+    assert row["lora_positive_class"] == "heliocentric"
+
+
+def test_audited_probe_direction_similarity_detects_opposite_label_encoding(tmp_path) -> None:
+    results_root = tmp_path / "probes"
+    write_probe_artifact(
+        results_root,
+        model_name="base",
+        target="stance",
+        layer=0,
+        scaled_direction=np.array([1.0, 2.0]),
+        scaler_scale=np.array([1.0, 1.0]),
+        label_mapping={"geocentric": 0, "heliocentric": 1},
+    )
+    write_probe_artifact(
+        results_root,
+        model_name="lora",
+        target="stance",
+        layer=0,
+        scaled_direction=np.array([1.0, 2.0]),
+        scaler_scale=np.array([1.0, 1.0]),
+        label_mapping={"geocentric": 1, "heliocentric": 0},
+    )
+
+    with pytest.raises(ValueError, match="Label encoding differs"):
+        audited_probe_direction_similarity(results_root=results_root, target="stance", layer=0)
+
+
+def test_build_audited_direction_similarity_from_artifacts(tmp_path) -> None:
+    results_root = tmp_path / "probes"
+    for target, label_mapping in [
+        ("stance", {"geocentric": 0, "heliocentric": 1}),
+        ("style", {"modern": 0, "premodern": 1}),
+    ]:
+        for model_name in ["base", "lora"]:
+            write_probe_artifact(
+                results_root,
+                model_name=model_name,
+                target=target,
+                layer=0,
+                scaled_direction=np.array([1.0, 0.0]),
+                scaler_scale=np.array([1.0, 1.0]),
+                label_mapping=label_mapping,
+            )
+
+    audited = build_audited_direction_similarity(results_root=results_root)
+
+    assert audited[["layer", "target"]].to_dict("records") == [
+        {"layer": 0, "target": "stance"},
+        {"layer": 0, "target": "style"},
+    ]
+    assert audited["raw_activation_space_cosine"].tolist() == pytest.approx([1.0, 1.0])
+
+
 def synthetic_store(*, condition: str, target_shift: float) -> ActivationStore:
     rng = np.random.default_rng(0)
     rows = []
@@ -133,4 +216,33 @@ def synthetic_store(*, condition: str, target_shift: float) -> ActivationStore:
         activations=np.asarray(activations),
         metadata=pd.DataFrame(rows),
         manifest={"layer_indices": [0, 1], "hidden_size": 2, "layer_zero": "embedding_output"},
+    )
+
+
+def write_probe_artifact(
+    results_root,
+    *,
+    model_name: str,
+    target: str,
+    layer: int,
+    scaled_direction: np.ndarray,
+    scaler_scale: np.ndarray,
+    label_mapping: dict[str, int],
+) -> None:
+    output_dir = results_root / model_name / target / "full_data_coefficients"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_direction = np.asarray(scaled_direction, dtype=float) / np.asarray(
+        scaler_scale,
+        dtype=float,
+    )
+    positive = [label for label, encoded in label_mapping.items() if encoded == 1][0]
+    np.savez_compressed(
+        output_dir / f"layer_{layer:03d}_full_data.npz",
+        coef=np.asarray(scaled_direction, dtype=float).reshape(1, -1),
+        intercept=np.array([0.0]),
+        scaler_mean=np.zeros_like(scaler_scale, dtype=float),
+        scaler_scale=np.asarray(scaler_scale, dtype=float),
+        activation_space_direction=raw_direction,
+        label_mapping=json.dumps(label_mapping, sort_keys=True),
+        positive_class=positive,
     )

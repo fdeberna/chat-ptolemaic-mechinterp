@@ -136,15 +136,44 @@ def save_probe_coefficients(
     model = probe.named_steps["logistic_regression"]
     scaler = probe.named_steps["standardize"]
     coef = np.asarray(model.coef_)
-    scale = np.asarray(scaler.scale_)
+    scale = validate_scaler_scale(scaler.scale_)
     np.savez_compressed(
         output_dir / f"layer_{layer_index:03d}_fold_{fold_index:02d}.npz",
         coef=coef,
         intercept=model.intercept_,
         scaler_mean=scaler.mean_,
         scaler_scale=scale,
-        activation_space_direction=coef.reshape(-1) / np.clip(scale, a_min=1e-12, a_max=None),
+        activation_space_direction=raw_activation_direction_from_scaled_coef(coef, scale),
     )
+
+
+def validate_scaler_scale(scale: np.ndarray) -> np.ndarray:
+    """Return a validated fitted StandardScaler scale vector."""
+
+    scale_array = np.asarray(scale, dtype=float).reshape(-1)
+    if scale_array.ndim != 1 or scale_array.size == 0:
+        raise ValueError("Scaler scale_ must be a non-empty one-dimensional vector.")
+    if not np.isfinite(scale_array).all():
+        raise ValueError("Scaler scale_ contains NaN or infinite values.")
+    if np.any(scale_array <= 0.0):
+        raise ValueError("Scaler scale_ contains zero or negative values.")
+    return scale_array
+
+
+def raw_activation_direction_from_scaled_coef(
+    scaled_coef: np.ndarray,
+    scaler_scale: np.ndarray,
+) -> np.ndarray:
+    """Convert a standardized-space logistic coefficient to raw activation coordinates."""
+
+    coef = np.asarray(scaled_coef, dtype=float).reshape(-1)
+    scale = validate_scaler_scale(scaler_scale)
+    if coef.shape != scale.shape:
+        raise ValueError(
+            "Coefficient and scaler scale shapes differ: "
+            f"coef={coef.shape}, scaler_scale={scale.shape}."
+        )
+    return coef / scale
 
 
 def extract_probe_direction(probe: Pipeline) -> np.ndarray:
@@ -152,9 +181,7 @@ def extract_probe_direction(probe: Pipeline) -> np.ndarray:
 
     model = probe.named_steps["logistic_regression"]
     scaler = probe.named_steps["standardize"]
-    return np.asarray(model.coef_).reshape(-1) / np.clip(
-        np.asarray(scaler.scale_), a_min=1e-12, a_max=None
-    )
+    return raw_activation_direction_from_scaled_coef(model.coef_, scaler.scale_)
 
 
 def train_on_source_evaluate_on_target(*args: object, **kwargs: object) -> pd.DataFrame:

@@ -15,7 +15,11 @@ from ptolemaic_mechinterp.probes.dataset import (
     grouped_stratified_splits,
 )
 from ptolemaic_mechinterp.probes.evaluation import binary_classification_metrics
-from ptolemaic_mechinterp.probes.linear import build_probe, extract_probe_direction
+from ptolemaic_mechinterp.probes.linear import (
+    build_probe,
+    extract_probe_direction,
+    raw_activation_direction_from_scaled_coef,
+)
 
 METRICS = ["accuracy", "balanced_accuracy", "f1", "roc_auc"]
 
@@ -245,6 +249,148 @@ def cosine_similarity(left: np.ndarray, right: np.ndarray) -> float:
     if left_norm <= 0.0 or right_norm <= 0.0:
         raise ValueError("Cannot compute cosine similarity for a zero-norm vector.")
     return float(np.dot(left, right) / (left_norm * right_norm))
+
+
+def cosine_similarity_or_nan(left: np.ndarray, right: np.ndarray) -> float:
+    left_norm = float(np.linalg.norm(left))
+    right_norm = float(np.linalg.norm(right))
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return float("nan")
+    return float(np.dot(left, right) / (left_norm * right_norm))
+
+
+def load_full_data_probe_artifact(path: Path) -> dict[str, Any]:
+    """Load a saved full-data probe artifact with scaled and raw coefficient directions."""
+
+    data = np.load(path, allow_pickle=False)
+    required_keys = {
+        "coef",
+        "intercept",
+        "scaler_mean",
+        "scaler_scale",
+        "label_mapping",
+        "positive_class",
+    }
+    missing = sorted(required_keys.difference(data.files))
+    if missing:
+        raise ValueError(f"Probe artifact is missing required keys {missing}: {path}")
+
+    scaled_direction = np.asarray(data["coef"], dtype=float).reshape(-1)
+    raw_direction = raw_activation_direction_from_scaled_coef(
+        scaled_direction,
+        np.asarray(data["scaler_scale"], dtype=float),
+    )
+    stored_raw_direction = (
+        np.asarray(data["activation_space_direction"], dtype=float).reshape(-1)
+        if "activation_space_direction" in data.files
+        else None
+    )
+    if stored_raw_direction is not None and not np.allclose(
+        stored_raw_direction,
+        raw_direction,
+        rtol=1e-10,
+        atol=1e-12,
+    ):
+        raise ValueError(
+            "Stored activation_space_direction differs from coef / scaler_scale: "
+            f"{path}"
+        )
+
+    label_mapping = parse_label_mapping(str(data["label_mapping"].item()))
+    positive = str(data["positive_class"].item())
+    expected_positive = positive_class(label_mapping)
+    if positive != expected_positive:
+        raise ValueError(
+            f"Artifact positive_class does not match label_mapping in {path}: "
+            f"positive_class={positive}, expected={expected_positive}."
+        )
+
+    return {
+        "scaled_direction": scaled_direction,
+        "raw_direction": raw_direction,
+        "scaled_norm": float(np.linalg.norm(scaled_direction)),
+        "raw_norm": float(np.linalg.norm(raw_direction)),
+        "label_mapping": label_mapping,
+        "positive_class": positive,
+    }
+
+
+def audited_probe_direction_similarity(
+    *,
+    results_root: Path,
+    target: str,
+    layer: int,
+    base_model: str = "base",
+    lora_model: str = "lora",
+) -> dict[str, Any]:
+    """Compare base and LoRA full-data probe directions in scaled and raw coordinates."""
+
+    base_path = (
+        results_root
+        / base_model
+        / target
+        / "full_data_coefficients"
+        / f"layer_{layer:03d}_full_data.npz"
+    )
+    lora_path = (
+        results_root
+        / lora_model
+        / target
+        / "full_data_coefficients"
+        / f"layer_{layer:03d}_full_data.npz"
+    )
+    base = load_full_data_probe_artifact(base_path)
+    lora = load_full_data_probe_artifact(lora_path)
+    assert_label_mapping_equal(base["label_mapping"], lora["label_mapping"], target=target)
+    if base["positive_class"] != lora["positive_class"]:
+        raise ValueError(
+            f"Positive class differs for {target}: "
+            f"base={base['positive_class']}, lora={lora['positive_class']}."
+        )
+
+    return {
+        "layer": int(layer),
+        "target": target,
+        "scaled_space_cosine": cosine_similarity_or_nan(
+            base["scaled_direction"], lora["scaled_direction"]
+        ),
+        "raw_activation_space_cosine": cosine_similarity_or_nan(
+            base["raw_direction"], lora["raw_direction"]
+        ),
+        "base_scaled_coef_norm": base["scaled_norm"],
+        "lora_scaled_coef_norm": lora["scaled_norm"],
+        "base_raw_coef_norm": base["raw_norm"],
+        "lora_raw_coef_norm": lora["raw_norm"],
+        "base_positive_class": base["positive_class"],
+        "lora_positive_class": lora["positive_class"],
+        "base_label_mapping": json.dumps(base["label_mapping"], sort_keys=True),
+        "lora_label_mapping": json.dumps(lora["label_mapping"], sort_keys=True),
+    }
+
+
+def build_audited_direction_similarity(
+    *,
+    results_root: Path,
+    targets: list[str] | tuple[str, ...] = ("stance", "style"),
+) -> pd.DataFrame:
+    """Build audited base-vs-LoRA direction similarities from saved probe artifacts."""
+
+    rows: list[dict[str, Any]] = []
+    for target in targets:
+        coefficient_dir = results_root / "base" / target / "full_data_coefficients"
+        layers = sorted(
+            int(path.name.removeprefix("layer_").removesuffix("_full_data.npz"))
+            for path in coefficient_dir.glob("layer_*_full_data.npz")
+        )
+        for layer in layers:
+            rows.append(
+                audited_probe_direction_similarity(
+                    results_root=results_root,
+                    target=target,
+                    layer=layer,
+                )
+            )
+    return pd.DataFrame(rows)
 
 
 def cross_model_probe_transfer(

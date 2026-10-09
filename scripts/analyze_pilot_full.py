@@ -18,6 +18,7 @@ from ptolemaic_mechinterp.probes.comparison import (
     aggregate_transfer_layers,
     assert_label_mapping_equal,
     assert_same_group_splits,
+    build_audited_direction_similarity,
     cosine_similarity,
     cross_model_probe_transfer,
     label_mapping_from_metrics,
@@ -87,6 +88,9 @@ def main() -> None:
     direction_similarity = build_direction_similarity(fold_metrics, direction_vectors)
     direction_similarity.to_csv(
         comparison_root / "probe_direction_similarity.csv", index=False
+    )
+    build_audited_direction_similarity(results_root=results_root).to_csv(
+        comparison_root / "probe_direction_similarity_audited.csv", index=False
     )
 
     transfer_folds = run_transfer_analyses(
