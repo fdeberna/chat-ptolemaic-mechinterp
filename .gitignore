@@ -33,9 +33,7 @@ env/
 /.cache/huggingface/
 
 # Generated experiment outputs
-results/activations/
-results/probes/
-results/comparisons/
+results/*
 
 # Keep explicit placeholders
 !results/.gitkeep
