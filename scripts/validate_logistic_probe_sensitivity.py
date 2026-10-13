@@ -6,7 +6,7 @@ import argparse
 import json
 import warnings
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,7 @@ from ptolemaic_mechinterp.probes.comparison import (
 from ptolemaic_mechinterp.probes.dataset import encode_binary_target
 
 TARGETS = ("stance", "style")
+UTC = timezone.utc
 EXPECTED_LABEL_MAPPINGS = {
     "stance": {"geocentric": 0, "heliocentric": 1},
     "style": {"modern": 0, "premodern": 1},

@@ -515,14 +515,22 @@ def make_final_error_plot(results: pd.DataFrame, output_path: Path) -> None:
     if final.empty:
         return
     plt.figure(figsize=(10, 5.5))
+    styles = series_styles(final)
     for (target, substeps), group in final.sort_values("layer").groupby(
         ["target", "substeps_per_interval"],
         sort=True,
     ):
+        style = styles[(target, int(substeps))]
         plt.plot(
             group["layer"],
             group["direct_unit_direction_distance"],
-            marker="o",
+            color=style["color"],
+            marker=style["marker"],
+            linestyle=style["linestyle"],
+            linewidth=1.8,
+            markersize=5,
+            markerfacecolor="white",
+            markeredgewidth=1.5,
             label=f"{target} {int(substeps)} substeps",
         )
     plt.xlabel("Layer")
@@ -541,14 +549,22 @@ def make_final_relative_error_plot(results: pd.DataFrame, output_path: Path) -> 
     if final.empty:
         return
     plt.figure(figsize=(10, 5.5))
+    styles = series_styles(final)
     for (target, substeps), group in final.sort_values("layer").groupby(
         ["target", "substeps_per_interval"],
         sort=True,
     ):
+        style = styles[(target, int(substeps))]
         plt.plot(
             group["layer"],
             group["direction_error_over_reference_movement"],
-            marker="o",
+            color=style["color"],
+            marker=style["marker"],
+            linestyle=style["linestyle"],
+            linewidth=1.8,
+            markersize=5,
+            markerfacecolor="white",
+            markeredgewidth=1.5,
             label=f"{target} {int(substeps)} substeps",
         )
     plt.axhline(0.02, color="black", linewidth=1, linestyle=":", label="2% target")
@@ -559,6 +575,36 @@ def make_final_relative_error_plot(results: pd.DataFrame, output_path: Path) -> 
     plt.tight_layout()
     plt.savefig(output_path, dpi=170)
     plt.close()
+
+
+def series_styles(results: pd.DataFrame) -> dict[tuple[str, int], dict[str, str]]:
+    """Return color-blind friendly styles with redundant marker/line encodings."""
+
+    colors = {
+        "stance": "#0072B2",
+        "style": "#D55E00",
+    }
+    markers = {
+        1: "o",
+        2: "s",
+        4: "^",
+        8: "D",
+    }
+    linestyles = {
+        1: "-",
+        2: "--",
+        4: "-.",
+        8: ":",
+    }
+    styles: dict[tuple[str, int], dict[str, str]] = {}
+    for target in sorted(results["target"].dropna().unique()):
+        for substeps in sorted(int(item) for item in results["substeps_per_interval"].unique()):
+            styles[(str(target), substeps)] = {
+                "color": colors.get(str(target), "#000000"),
+                "marker": markers.get(substeps, "o"),
+                "linestyle": linestyles.get(substeps, "-"),
+            }
+    return styles
 
 
 def write_report(path: Path, *, results: pd.DataFrame) -> None:
