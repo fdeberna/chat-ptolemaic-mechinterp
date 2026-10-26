@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +78,7 @@ def train_layerwise_logistic_probes(
                 "n_test": int(len(test_index)),
                 "target": target,
                 "grouping_column": grouping_column,
-                "label_mapping": label_mapping,
+                "label_mapping": json.dumps(label_mapping, sort_keys=True),
                 "random_seed": random_seed,
             }
             row.update({f"class_count_{label}": count for label, count in balance.items()})
@@ -133,18 +134,54 @@ def save_probe_coefficients(
     """Save fitted logistic-regression coefficients for a layer/fold."""
 
     model = probe.named_steps["logistic_regression"]
+    scaler = probe.named_steps["standardize"]
+    coef = np.asarray(model.coef_)
+    scale = validate_scaler_scale(scaler.scale_)
     np.savez_compressed(
         output_dir / f"layer_{layer_index:03d}_fold_{fold_index:02d}.npz",
-        coef=model.coef_,
+        coef=coef,
         intercept=model.intercept_,
+        scaler_mean=scaler.mean_,
+        scaler_scale=scale,
+        activation_space_direction=raw_activation_direction_from_scaled_coef(coef, scale),
     )
 
 
+def validate_scaler_scale(scale: np.ndarray) -> np.ndarray:
+    """Return a validated fitted StandardScaler scale vector."""
+
+    scale_array = np.asarray(scale, dtype=float).reshape(-1)
+    if scale_array.ndim != 1 or scale_array.size == 0:
+        raise ValueError("Scaler scale_ must be a non-empty one-dimensional vector.")
+    if not np.isfinite(scale_array).all():
+        raise ValueError("Scaler scale_ contains NaN or infinite values.")
+    if np.any(scale_array <= 0.0):
+        raise ValueError("Scaler scale_ contains zero or negative values.")
+    return scale_array
+
+
+def raw_activation_direction_from_scaled_coef(
+    scaled_coef: np.ndarray,
+    scaler_scale: np.ndarray,
+) -> np.ndarray:
+    """Convert a standardized-space logistic coefficient to raw activation coordinates."""
+
+    coef = np.asarray(scaled_coef, dtype=float).reshape(-1)
+    scale = validate_scaler_scale(scaler_scale)
+    if coef.shape != scale.shape:
+        raise ValueError(
+            "Coefficient and scaler scale shapes differ: "
+            f"coef={coef.shape}, scaler_scale={scale.shape}."
+        )
+    return coef / scale
+
+
 def extract_probe_direction(probe: Pipeline) -> np.ndarray:
-    """Return the learned linear direction from a fitted probe."""
+    """Return the learned activation-space linear direction from a fitted probe."""
 
     model = probe.named_steps["logistic_regression"]
-    return np.asarray(model.coef_).reshape(-1)
+    scaler = probe.named_steps["standardize"]
+    return raw_activation_direction_from_scaled_coef(model.coef_, scaler.scale_)
 
 
 def train_on_source_evaluate_on_target(*args: object, **kwargs: object) -> pd.DataFrame:

@@ -17,6 +17,7 @@ dependencies = [
     "pandas",
     "numpy",
     "pyyaml",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
@@ -42,4 +43,3 @@ src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-

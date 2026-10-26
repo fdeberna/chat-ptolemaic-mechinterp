@@ -4,7 +4,12 @@ import pytest
 
 from ptolemaic_mechinterp.activations.storage import ActivationStore
 from ptolemaic_mechinterp.probes.dataset import encode_binary_target, grouped_stratified_splits
-from ptolemaic_mechinterp.probes.linear import train_layerwise_logistic_probes
+from ptolemaic_mechinterp.probes.linear import (
+    build_probe,
+    extract_probe_direction,
+    raw_activation_direction_from_scaled_coef,
+    train_layerwise_logistic_probes,
+)
 
 
 def test_grouped_splits_prevent_template_family_leakage() -> None:
@@ -65,6 +70,64 @@ def test_layerwise_probe_rejects_template_leakage_by_construction() -> None:
     train_index, test_index = grouped_stratified_splits(y, groups, n_folds=3, random_seed=0)[0]
 
     assert set(groups[train_index]).isdisjoint(set(groups[test_index]))
+
+
+def test_raw_activation_direction_from_scaled_coef_undoes_standard_scaler_scale() -> None:
+    raw_direction = np.array([1.0, 1.0])
+    scale_a = np.array([1.0, 100.0])
+    scale_b = np.array([100.0, 1.0])
+    scaled_direction_a = raw_direction * scale_a
+    scaled_direction_b = raw_direction * scale_b
+
+    scaled_cosine = float(
+        np.dot(scaled_direction_a, scaled_direction_b)
+        / (np.linalg.norm(scaled_direction_a) * np.linalg.norm(scaled_direction_b))
+    )
+    recovered_a = raw_activation_direction_from_scaled_coef(scaled_direction_a, scale_a)
+    recovered_b = raw_activation_direction_from_scaled_coef(scaled_direction_b, scale_b)
+    raw_cosine = float(
+        np.dot(recovered_a, recovered_b)
+        / (np.linalg.norm(recovered_a) * np.linalg.norm(recovered_b))
+    )
+
+    assert scaled_cosine < 0.03
+    assert np.allclose(recovered_a, raw_direction)
+    assert np.allclose(recovered_b, raw_direction)
+    assert raw_cosine == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "scale",
+    [
+        np.array([0.0, 1.0]),
+        np.array([-1.0, 1.0]),
+        np.array([np.nan, 1.0]),
+        np.array([np.inf, 1.0]),
+    ],
+)
+def test_raw_activation_direction_rejects_invalid_scaler_scale(scale: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="Scaler scale_"):
+        raw_activation_direction_from_scaled_coef(np.array([1.0, 2.0]), scale)
+
+
+def test_extract_probe_direction_returns_raw_activation_space_direction() -> None:
+    x = np.array(
+        [
+            [-10.0, -1.0],
+            [-9.0, 1.0],
+            [9.0, -1.0],
+            [10.0, 1.0],
+        ]
+    )
+    y = np.array([0, 0, 1, 1])
+    probe = build_probe(random_seed=0, max_iter=200, class_weight=None)
+    probe.fit(x, y)
+
+    model = probe.named_steps["logistic_regression"]
+    scaler = probe.named_steps["standardize"]
+    expected = np.asarray(model.coef_).reshape(-1) / scaler.scale_
+
+    assert np.allclose(extract_probe_direction(probe), expected)
 
 
 def synthetic_activation_store() -> ActivationStore:
