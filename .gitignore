@@ -37,3 +37,4 @@ results/*
 
 # Keep explicit placeholders
 !results/.gitkeep
+ABLATION_PLAN.md
