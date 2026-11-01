@@ -163,8 +163,10 @@ block outputs are layers 1 through N.
 
 - The example prompts are not scientifically meaningful.
 - The first probe task is binary cosmological stance only.
-- Activation steering, patching, cross-model patching, probe-transfer evaluation, LoRA projection,
-  and selective adapter ablation are represented as lightweight interfaces or placeholders.
+- The bounded stance-steering development pilot is closed; its prompt-specific suppression
+  findings do not establish reliable bidirectional semantic steering. See the project summary below.
+- Activation patching, cross-model patching, LoRA projection and selective adapter ablation
+  remain separate work.
 - The storage layer is intentionally simple and may later be replaced by Zarr or HDF5 for larger
   runs.
 
@@ -178,3 +180,31 @@ block outputs are layers 1 through N.
 - LoRA weight and activation analysis.
 - Selective adapter ablations by layer or module.
 - Behavioral evaluation of generated outputs.
+
+## Default Generation Protocol
+
+New generation experiments use the frozen
+[`configs/generation_reproduced_v1.json`](configs/generation_reproduced_v1.json)
+unless an explicitly labeled override is authorized. This protocol reproduced ten
+historical answers for both base and LoRA exactly. It preserves the recorded
+sampling/anti-repetition settings and original per-sample seed derivation.
+See [`configs/GENERATION_PROTOCOL.md`](configs/GENERATION_PROTOCOL.md) for usage.
+Older experiment scripts retain their original defaults for provenance; do not
+treat those defaults as the current generation protocol.
+
+## Stance-Steering Pilot — Completed
+
+Prompt-specific omission of Earth-motion claims was observed; reliable
+bidirectional stance control was not demonstrated. The pilot is closed without
+further tuning.
+
+- [Detailed scored-analysis report](results/steering/reproduced_protocol_stance_strength_sweep/scored_analysis_20261030/report.md)
+- [Project summary and limitations](results/pilot_full_summary.md#steering-pilot--closed-2026-11-01)
+- [Frozen generation configuration](configs/generation_reproduced_v1.json)
+- Reproduction commands: [generation and sweep](results/steering/reproduced_protocol_stance_strength_sweep/report.md#frozen-settings-and-resources)
+  and [CPU-only scoring analysis](results/steering/reproduced_protocol_stance_strength_sweep/scored_analysis_20261030/data_report.md#limits-and-reproduction)
+- [Frozen scoring rubric](configs/steering_scoring_rubric_v1.md)
+
+Reports and generated artifacts remain local under `results/`, which is ignored
+for new outputs; configurations, scripts and the project summary preserve the
+reproduction references.
